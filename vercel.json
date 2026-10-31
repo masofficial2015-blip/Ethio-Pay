@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/v1/cron/deadman-check",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}
+
