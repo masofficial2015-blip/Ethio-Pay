@@ -133,6 +133,18 @@ function parseMpesa(sender, body) {
     return null;
   }
 
+  // Format 1: Safaricom Standard P2P: "TKD41S7XYZ Confirmed. You have received ETB 100.00 from Mesud Ahmed on 31/10/2026 at 10:15 AM. New M-PESA balance is ETB..."
+  const startMatch = body.match(/^([a-zA-Z0-9]{7,15})\s+Confirmed\.\s+You have received\s+(?:ETB\s*)?([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:ETB)?\s+from\s+(.*?)\s+on\s+(.+?)\.\s*New M-PESA balance/i);
+  if (startMatch) {
+    const reference = startMatch[1].trim();
+    const amount = parseCleanAmount(startMatch[2]);
+    const payerName = startMatch[3].trim();
+    if (amount && reference) {
+      return { provider: 'MPESA', amount, currency: 'ETB', reference, payerName };
+    }
+  }
+
+  // Format 2: Specific format with "Account Number ... to your Account ... Transaction number is"
   const mpesaMatch = body.match(/You have received\s*([0-9,]+(?:\.[0-9]{1,2})?)\s*from\s*(.*?)(?:\s+Account Number\s+([0-9]+))?\s*on\s*([0-9-]+)\s*at\s*([0-9:APMapm\s]+)\s*to your Account\s*([0-9]+)\.\s*Transaction number is\s*([a-zA-Z0-9]+)\./i);
   if (mpesaMatch) {
     const amount = parseCleanAmount(mpesaMatch[1]);
@@ -149,6 +161,28 @@ function parseMpesa(sender, body) {
         payerName,
         receiverAccount,
       };
+    }
+  }
+
+  // Format 3: Interbank CBE-to-Mpesa transfer: "You have received ETB 100.00 from Commercial Bank of Ethiopia (CBE) to your M-PESA Account on 31/10/2026 at 10:15 AM. Transaction ID: TKD41S7XYZ."
+  const interbankMatch = body.match(/You have received\s+(?:ETB\s*)?([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:ETB)?\s+from\s+(.*?)(?:\s+to your M-PESA Account)?\s+on\s+(.+?)\.\s*(?:Transaction (?:ID|number|No)[:\s]+([a-zA-Z0-9]+)|([a-zA-Z0-9]{8,})\s+is your transaction)/i);
+  if (interbankMatch) {
+    const amount = parseCleanAmount(interbankMatch[1]);
+    const payerName = interbankMatch[2].trim();
+    const reference = (interbankMatch[4] || interbankMatch[5] || '').trim();
+    if (amount && reference) {
+      return { provider: 'MPESA', amount, currency: 'ETB', reference, payerName };
+    }
+  }
+
+  // Format 4: Flexible regex fallback for other credit variants
+  const amtMatch = body.match(/(?:received\s+(?:ETB\s*)?|ETB\s*)([0-9,]+(?:\.[0-9]{1,2})?)/i);
+  const refMatch = body.match(/(?:Transaction (?:ID|number|No)[:\s]+([a-zA-Z0-9]+)|^([a-zA-Z0-9]{8,15})\s+Confirmed)/i);
+  if (amtMatch && refMatch) {
+    const amount = parseCleanAmount(amtMatch[1]);
+    const reference = (refMatch[1] || refMatch[2] || '').trim();
+    if (amount && reference) {
+      return { provider: 'MPESA', amount, currency: 'ETB', reference, payerName: null };
     }
   }
 

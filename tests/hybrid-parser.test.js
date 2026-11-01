@@ -156,6 +156,36 @@ test('Fast Regex: Correctly parses Safaricom M-PESA SMS', () => {
   assert.strictEqual(result.data.payerName, 'Commercial Bank of Ethiopia');
 });
 
+test('Fast Regex: Correctly parses Safaricom M-PESA P2P with ID at start', () => {
+  const sms = 'TKD41S7XYZ Confirmed. You have received ETB 100.00 from Mesud Ahmed on 31/10/2026 at 10:15 AM. New M-PESA balance is ETB 1,450.00.';
+
+  const result = runFastRegexEngine({ sender: 'MPESA', messageBody: sms });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.provider, 'MPESA');
+  assert.strictEqual(result.data.amount, 100.0);
+  assert.strictEqual(result.data.reference, 'TKD41S7XYZ');
+  assert.strictEqual(result.data.payerName, 'Mesud Ahmed');
+});
+
+test('Fast Regex: Correctly parses Safaricom M-PESA Interbank transfer from CBE', () => {
+  const sms = 'You have received ETB 100.00 from Commercial Bank of Ethiopia (CBE) to your M-PESA Account on 31/10/2026 at 10:15 AM. Transaction ID: TKB99S11AA. New M-PESA balance is ETB 500.00.';
+
+  const result = runFastRegexEngine({ sender: 'MPESA', messageBody: sms });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.provider, 'MPESA');
+  assert.strictEqual(result.data.amount, 100.0);
+  assert.strictEqual(result.data.reference, 'TKB99S11AA');
+  assert.strictEqual(result.data.payerName, 'Commercial Bank of Ethiopia (CBE)');
+});
+
+test('Pre-Filter Gate: Does not drop credit transfer containing sent keyword', () => {
+  const gateResult = evaluatePreFilterGate({
+    sender: 'CBE',
+    messageBody: 'You have received ETB 100 sent by Mesud Ahmed to your Account 1000123. Ref: FT26304XYZ',
+  });
+  assert.strictEqual(gateResult.allowed, true);
+});
+
 test('Fast Regex: Correctly parses Bank of Abyssinia (BOA) SMS', () => {
   const sms = 'Dear Seada, your account 4*****67 was credited with ETB 600.00 by Biniam Worku Getahun . Available Balance: ETB 23,878.45. Receipt: https://cs.bankofabyssinia.com/slip/?trx=FT2629569ZFS35892';
 
