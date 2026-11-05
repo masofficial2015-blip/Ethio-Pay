@@ -48,7 +48,7 @@ export async function POST(request) {
 ━━━━━━━━━━━━━━━━━━━━━
 <i>If you see this alert, the cashier group is active and ready to receive real-time payment alerts.</i>`;
 
-    const result = await sendTelegramMessage(targetChatId, testMessage);
+    const result = await sendTelegramMessage(targetChatId, testMessage, merchant.id);
 
     if (!result.success) {
       return Response.json(

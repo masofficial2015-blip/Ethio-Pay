@@ -59,7 +59,7 @@ export function formatCashierAlert(transaction) {
 `;
 }
 
-export async function sendTelegramMessage(chatId, messageHtml) {
+export async function sendTelegramMessage(chatId, messageHtml, merchantId = null) {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
   if (!botToken || botToken.includes('XYZ') || botToken.includes('placeholder')) {
@@ -75,19 +75,74 @@ export async function sendTelegramMessage(chatId, messageHtml) {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
 
   try {
-    const response = await fetch(url, {
+    let currentChatId = String(chatId).trim();
+    let response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: chatId,
+        chat_id: currentChatId,
         text: messageHtml,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       }),
     });
 
-    const data = await response.json();
+    let data = await response.json();
+
+    // Handle Telegram Group upgraded to Supergroup migration automatically
     if (!response.ok || !data.ok) {
+      const migrateToChatId = data.parameters?.migrate_to_chat_id;
+      const isSupergroupUpgrade =
+        migrateToChatId ||
+        (data.description && data.description.toLowerCase().includes('upgraded to a supergroup'));
+
+      if (isSupergroupUpgrade) {
+        // If migrate_to_chat_id is provided by Telegram, use it; otherwise prepend -100 if it was a plain negative ID
+        const newChatId = migrateToChatId
+          ? String(migrateToChatId)
+          : currentChatId.startsWith('-100')
+          ? currentChatId
+          : `-100${currentChatId.replace('-', '')}`;
+
+        console.log(`[Telegram Auto-Migration] Group ${currentChatId} upgraded to supergroup ${newChatId}. Auto-migrating & retrying...`);
+
+        // If merchantId is provided, update DB / mockState with the new supergroup ID immediately
+        if (merchantId) {
+          try {
+            await linkTelegramGroup(merchantId, newChatId);
+          } catch (e) {
+            console.error('[Telegram Auto-Migration] Failed to persist migrated chat ID:', e);
+          }
+        }
+
+        // Retry sending to the new supergroup ID
+        const retryResponse = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: newChatId,
+            text: messageHtml,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+          }),
+        });
+
+        const retryData = await retryResponse.json();
+        if (retryResponse.ok && retryData.ok) {
+          return {
+            success: true,
+            messageId: retryData.result?.message_id,
+            migratedToChatId: newChatId,
+          };
+        }
+
+        return {
+          success: false,
+          error: retryData.description || 'Failed to deliver to migrated supergroup',
+          migratedToChatId: newChatId,
+        };
+      }
+
       return {
         success: false,
         error: data.description || 'Unknown Telegram API error',
@@ -96,7 +151,7 @@ export async function sendTelegramMessage(chatId, messageHtml) {
 
     return {
       success: true,
-      messageId: data.result.message_id,
+      messageId: data.result?.message_id,
     };
   } catch (error) {
     return {
@@ -158,7 +213,7 @@ export async function getLinkedGroup(merchantId) {
   return mockState.cashiers.get(merchantId) || null;
 }
 
-export async function broadcastToCashiers(chatIds, transaction) {
+export async function broadcastToCashiers(chatIds, transaction, merchantId = null) {
   const messageHtml = formatCashierAlert(transaction);
   const targetChats = chatIds && chatIds.length > 0
     ? chatIds
@@ -169,7 +224,7 @@ export async function broadcastToCashiers(chatIds, transaction) {
 
   for (const chatId of targetChats) {
     if (!chatId) continue;
-    const result = await sendTelegramMessage(chatId, messageHtml);
+    const result = await sendTelegramMessage(chatId, messageHtml, merchantId);
     if (result.success) {
       deliveredCount++;
     } else {

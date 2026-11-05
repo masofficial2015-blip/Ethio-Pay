@@ -219,7 +219,7 @@ export async function POST(request) {
       transaction_time: transaction_time || new Date().toISOString(),
     };
 
-    const telegramResult = await broadcastToCashiers(cashierChatIds, txData);
+    const telegramResult = await broadcastToCashiers(cashierChatIds, txData, merchantId);
 
     // 8. Persist Transaction in Database
     let transactionId = crypto.randomUUID();
