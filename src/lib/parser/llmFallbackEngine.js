@@ -155,9 +155,9 @@ function runHeuristicFallback({ sender, messageBody, startTime }) {
     if (!isNaN(candidate) && candidate > 0) amount = candidate;
   }
 
-  // Reference regex
+  // Reference regex: supports English and universal Amharic reference indicators
   let reference = null;
-  const refMatch = messageBody.match(/(?:Ref(?:erence)?|Trx(?:Id)?|Txn(?:Id)?|Transaction\s*(?:ID|Number)|ማመሳከሪያ)\s*[:=\s]\s*([a-zA-Z0-9_&=-]{5,})|\b(FT[0-9A-Z]{6,})\b/i);
+  const refMatch = messageBody.match(/(?:Ref(?:erence)?(?:\s*No\.?|\s*Number|\s*is)?|Trx(?:Id)?|Txn(?:Id)?|Transaction\s*(?:ID|Number|No\.?)|(?:የገንዘብ\s*ዝውውር\s*)?መለያ\s*ቁጥር|የግብይት\s*(?:መለያ|ቁጥር)|ማመሳከሪያ(?:\s*ቁጥር)?|የደረሰኝ\s*ቁጥር)\s*[:፡=\s]\s*([a-zA-Z0-9_&=-]{5,})|\b(FT[0-9A-Z]{6,})\b/i);
   if (refMatch) {
     reference = (refMatch[1] || refMatch[2]).trim();
   }

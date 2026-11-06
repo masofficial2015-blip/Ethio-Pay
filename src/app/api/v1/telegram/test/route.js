@@ -39,12 +39,20 @@ export async function POST(request) {
       );
     }
 
+    const formattedTime = new Date().toLocaleTimeString('en-US', {
+      timeZone: 'Africa/Addis_Ababa',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+
     const testMessage = `🧪 <b>EthioPay Telegram Connection Test</b>
 ━━━━━━━━━━━━━━━━━━━━━
 ✅ <b>Status:</b> Connected & Operational
 🏢 <b>Pharmacy:</b> ${merchant.name}
 🔢 <b>Chat ID:</b> <code>${targetChatId}</code>
-🕒 <b>Sent At:</b> ${new Date().toLocaleTimeString()}
+🕒 <b>Sent At:</b> ${formattedTime}
 ━━━━━━━━━━━━━━━━━━━━━
 <i>If you see this alert, the cashier group is active and ready to receive real-time payment alerts.</i>`;
 

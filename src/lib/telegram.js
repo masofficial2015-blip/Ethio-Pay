@@ -37,16 +37,23 @@ export function formatCashierAlert(transaction) {
 
   const timeStr = transaction.transaction_time
     ? new Date(transaction.transaction_time).toLocaleTimeString('en-US', {
+      timeZone: 'Africa/Addis_Ababa',
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
       hour12: true,
     })
-    : new Date().toLocaleTimeString('en-US');
+    : new Date().toLocaleTimeString('en-US', {
+      timeZone: 'Africa/Addis_Ababa',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
 
   const dateStr = transaction.transaction_time
-    ? new Date(transaction.transaction_time).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
+    ? new Date(transaction.transaction_time).toLocaleDateString('en-CA', { timeZone: 'Africa/Addis_Ababa' })
+    : new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Addis_Ababa' });
 
   return `🔔 <b>PAYMENT RECEIVED</b>
 ━━━━━━━━━━━━━━━━━━━━━

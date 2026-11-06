@@ -48,6 +48,7 @@ export async function POST(request) {
           : device.is_battery_optimization_ignored,
       app_version: app_version || device.app_version,
       last_heartbeat_at: now,
+      is_offline_alert_sent: false,
     };
 
     if (isSupabaseConfigured()) {

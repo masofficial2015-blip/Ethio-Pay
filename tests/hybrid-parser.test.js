@@ -178,6 +178,28 @@ test('Fast Regex: Correctly parses Safaricom M-PESA Interbank transfer from CBE'
   assert.strictEqual(result.data.payerName, 'Commercial Bank of Ethiopia (CBE)');
 });
 
+test('Fast Regex: Correctly parses Amharic Safaricom M-PESA Interbank SMS with real reference', () => {
+  const sms = 'ውድ Mesoud፣ 700.00 ብር ከ Commercial Bank Of Ethiopia-B2C  ፟- ከ Mesud Ahmed Seid  በ 5/11/26 በ 4:34 PM ላይ ተቀብለዋል። የገንዘብ ዝውውር መለያ ቁጥር UK55WK4347 ነው። የእርስዎ አሁን ያለው የM-PESA ቀሪ ሒሳብ 702.20 ብር ነው። የ M-PESA የሂሳብ ቁጥርዎን ከፋይዳ ጋር ለማስተሳሰር ከታች ያለውን ማስፈንጠሪያ ይጠቀሙ ፡፡  https://m-pesabusiness.safaricom.et/nid/login';
+
+  const result = runFastRegexEngine({ sender: 'M-PESA', messageBody: sms });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.provider, 'MPESA');
+  assert.strictEqual(result.data.amount, 700.0);
+  assert.strictEqual(result.data.reference, 'UK55WK4347');
+  assert.strictEqual(result.data.payerName, 'Mesud Ahmed Seid');
+});
+
+test('Fast Regex: Correctly parses Amharic Telebirr SMS with real reference', () => {
+  const sms = 'ከ Abdi Tamirat(2519****6646) ETB 20.00 ተቀብለዋል። የግብይት ቁጥርዎ DK65RPR8UX ነው።';
+
+  const result = runFastRegexEngine({ sender: 'telebirr', messageBody: sms });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(result.data.provider, 'TELEBIRR');
+  assert.strictEqual(result.data.amount, 20.0);
+  assert.strictEqual(result.data.reference, 'DK65RPR8UX');
+  assert.strictEqual(result.data.payerName, 'Abdi Tamirat');
+});
+
 test('Pre-Filter Gate: Does not drop credit transfer containing sent keyword', () => {
   const gateResult = evaluatePreFilterGate({
     sender: 'CBE',

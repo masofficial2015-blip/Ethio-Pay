@@ -58,14 +58,26 @@ function parseCbe(sender, body) {
       amount = parseCleanAmount(transferMatch[1]);
       payerName = transferMatch[3] ? transferMatch[3].trim() : transferMatch[2].trim();
       receiverAccount = transferMatch[4].trim();
+    } else {
+      // Format 3: Amharic CBE credit (በ 1****1328 ሂሳብዎ ላይ ETB 500.00 ገቢ ሆኗል...)
+      const amharicMatch = body.match(/(?:በ\s*([^\s]+)\s*ሒሳብዎ\s*ላይ|ሒሳብ\s*ቁጥር\s*([^\s]+)).*?(?:ETB|ብር)\s*([0-9,]+(?:\.[0-9]{1,2})?)\s*ገቢ\s*(?:ሆኗል|ተደርጓል)/i);
+      if (amharicMatch) {
+        receiverAccount = (amharicMatch[1] || amharicMatch[2])?.trim();
+        amount = parseCleanAmount(amharicMatch[3]);
+      }
     }
   }
 
-  // Fallback FT reference if receipt URL was truncated
+  // Fallback FT or Amharic reference if receipt URL was not present
   if (!reference) {
     const ftMatch = body.match(/\b(FT[0-9A-Z]{8,})\b/);
     if (ftMatch) {
       reference = ftMatch[1].trim();
+    } else {
+      const amharicRefMatch = body.match(/(?:የገንዘብ\s*ዝውውር\s*መለያ\s*ቁጥር|የግብይት\s*(?:መለያ|ቁጥር)|ማመሳከሪያ(?:\s*ቁጥር)?|የደረሰኝ\s*ቁጥር|መለያ\s*ቁጥር)\s*[:፡]?\s*([a-zA-Z0-9]+)/);
+      if (amharicRefMatch) {
+        reference = amharicRefMatch[1].trim();
+      }
     }
   }
 
@@ -109,6 +121,22 @@ function parseTelebirr(sender, body) {
       amount = parseCleanAmount(standardMatch[1]);
       payerName = standardMatch[2].trim();
       reference = standardMatch[5].trim();
+    } else {
+      // Format 3: Amharic Telebirr (በ 2026-11-06... ከ Abdi Tamirat(2519****6646) ETB 20.00 ተቀብለዋል። የግብይት ቁጥርዎ DK65RPR8UX ነው።)
+      const amharicMatch = body.match(/(?:ከ\s*([^(]+?)(?:\(([^\s)]+)\))?\s*)?(?:ETB|ብር)\s*([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:ተቀብለዋል|ገቢ\s*(?:ሆኗል|ተደርጓል)).*?(?:የግብይት\s*(?:ቁጥር(?:ዎ)?|መለያ)|መለያ\s*ቁጥር)\s*[:፡]?\s*([a-zA-Z0-9]+)/i);
+      if (amharicMatch) {
+        payerName = amharicMatch[1] ? amharicMatch[1].trim() : null;
+        amount = parseCleanAmount(amharicMatch[3]);
+        reference = amharicMatch[4] ? amharicMatch[4].trim() : null;
+      }
+    }
+  }
+
+  // Fallback Amharic or general reference for Telebirr
+  if (!reference) {
+    const amharicRefMatch = body.match(/(?:የግብይት\s*(?:ቁጥር(?:ዎ)?|መለያ)|የገንዘብ\s*ዝውውር\s*መለያ\s*ቁጥር|ማመሳከሪያ(?:\s*ቁጥር)?|transaction\s*(?:number|id)\s*is)\s*[:፡]?\s*([a-zA-Z0-9]+)/i);
+    if (amharicRefMatch) {
+      reference = amharicRefMatch[1].trim();
     }
   }
 
@@ -128,8 +156,8 @@ function parseTelebirr(sender, body) {
 
 // 3. Safaricom M-PESA
 function parseMpesa(sender, body) {
-  const upperSender = sender.toUpperCase();
-  if (!upperSender.includes('MPESA') && !upperSender.includes('SAFARICOM')) {
+  const cleanSender = sender.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!cleanSender.includes('MPESA') && !cleanSender.includes('SAFARICOM')) {
     return null;
   }
 
@@ -175,12 +203,33 @@ function parseMpesa(sender, body) {
     }
   }
 
-  // Format 4: Flexible regex fallback for other credit variants
-  const amtMatch = body.match(/(?:received\s+(?:ETB\s*)?|ETB\s*)([0-9,]+(?:\.[0-9]{1,2})?)/i);
-  const refMatch = body.match(/(?:Transaction (?:ID|number|No)[:\s]+([a-zA-Z0-9]+)|^([a-zA-Z0-9]{8,15})\s+Confirmed)/i);
+  // Format 4: Amharic M-PESA (ውድ Mesoud፣ 700.00 ብር ከ Commercial Bank Of Ethiopia-B2C  ፟- ከ Mesud Ahmed Seid  በ 5/11/26 በ 4:34 PM ላይ ተቀብለዋል። የገንዘብ ዝውውር መለያ ቁጥር UK55WK4347 ነው።)
+  const amharicMatch = body.match(/([0-9,]+(?:\.[0-9]{1,2})?)\s*ብር\s+ከ\s+(.*?)\s+(?:በ\s+[0-9/]+\s+በ\s+[0-9:APMapm\s]+(?:ላይ)?\s+)?ተቀብለዋል.*?(?:የገንዘብ\s*ዝውውር\s*)?መለያ\s*ቁጥር\s*([a-zA-Z0-9]+)/i);
+  if (amharicMatch) {
+    const amount = parseCleanAmount(amharicMatch[1]);
+    let rawPayer = amharicMatch[2].trim();
+    if (rawPayer.includes('ከ ')) {
+      const parts = rawPayer.split(/-\s*ከ\s+/);
+      rawPayer = parts[parts.length - 1].trim();
+    }
+    const reference = amharicMatch[3].trim();
+    if (amount && reference) {
+      return {
+        provider: 'MPESA',
+        amount,
+        currency: 'ETB',
+        reference,
+        payerName: rawPayer || null,
+      };
+    }
+  }
+
+  // Format 5: Flexible regex fallback for other credit variants (English & Amharic)
+  const amtMatch = body.match(/(?:received\s+(?:ETB\s*)?|ETB\s*|ብር\s*)([0-9,]+(?:\.[0-9]{1,2})?)/i) || body.match(/([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:ETB|ብር)/i);
+  const refMatch = body.match(/(?:Transaction (?:ID|number|No)[:\s]+([a-zA-Z0-9]+)|^([a-zA-Z0-9]{8,15})\s+Confirmed|(?:የገንዘብ\s*ዝውውር\s*)?መለያ\s*ቁጥር\s*([a-zA-Z0-9]+))/i);
   if (amtMatch && refMatch) {
     const amount = parseCleanAmount(amtMatch[1]);
-    const reference = (refMatch[1] || refMatch[2] || '').trim();
+    const reference = (refMatch[1] || refMatch[2] || refMatch[3] || '').trim();
     if (amount && reference) {
       return { provider: 'MPESA', amount, currency: 'ETB', reference, payerName: null };
     }

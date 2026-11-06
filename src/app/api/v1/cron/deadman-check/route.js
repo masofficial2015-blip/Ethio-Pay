@@ -31,6 +31,7 @@ export async function checkDeadManSwitches() {
             id,
             device_name,
             last_heartbeat_at,
+            network_type,
             is_active
           )
         `)
@@ -74,24 +75,59 @@ export async function checkDeadManSwitches() {
 
     const lastBeatTime = activeDevice.last_heartbeat_at ? new Date(activeDevice.last_heartbeat_at).getTime() : 0;
     const isOffline = now - lastBeatTime > OFFLINE_THRESHOLD_MS;
-    const previousState = offlineStatusTracker.get(merchant.id) || { isOffline: false, alertSent: false };
+    
+    // Check persistent state across serverless cold starts
+    const alertAlreadySent =
+      activeDevice.is_offline_alert_sent === true ||
+      activeDevice.network_type === 'OFFLINE_ALERTED' ||
+      offlineStatusTracker.get(merchant.id)?.alertSent === true;
 
-    if (isOffline && !previousState.alertSent) {
-      // Send warning to cashier Telegram group
+    if (isOffline && !alertAlreadySent) {
+      // Send warning to cashier Telegram group once
       const warningMsg = `⚠️ <b>ALERT: OWNER DEVICE IS OFFLINE</b>\n\n` +
         ` <b>Payment alerts cannot be forwarded here automatically. please verify  transactions manually.</b>`;
 
-      await sendTelegramMessage(chatId, warningMsg);
+      await sendTelegramMessage(chatId, warningMsg, merchant.id);
+
+      // Persist that offline alert was sent
+      if (isSupabaseConfigured()) {
+        try {
+          await supabaseAdmin.from('devices').update({
+            is_offline_alert_sent: true,
+            network_type: 'OFFLINE_ALERTED',
+          }).eq('id', activeDevice.id);
+        } catch (e) {
+          try {
+            await supabaseAdmin.from('devices').update({
+              network_type: 'OFFLINE_ALERTED',
+            }).eq('id', activeDevice.id);
+          } catch (_) {}
+        }
+      }
       offlineStatusTracker.set(merchant.id, { isOffline: true, alertSent: true });
       results.push({ merchant: merchant.name, action: 'OFFLINE_WARNING_SENT' });
-    } else if (!isOffline && previousState.isOffline) {
-      // Reconnected! Send recovery notice
+    } else if (!isOffline && alertAlreadySent) {
+      // Reconnected! Send recovery notice once
       const recoveryMsg = `🟢 <b> NOTICE: SERVICE RESTORED</b>\n\n` +
-
         `owner's Device is back online and actively forwarding alerts here.`;
 
+      await sendTelegramMessage(chatId, recoveryMsg, merchant.id);
 
-      await sendTelegramMessage(chatId, recoveryMsg);
+      // Reset persistent offline alert state
+      if (isSupabaseConfigured()) {
+        try {
+          await supabaseAdmin.from('devices').update({
+            is_offline_alert_sent: false,
+            network_type: 'ONLINE',
+          }).eq('id', activeDevice.id);
+        } catch (e) {
+          try {
+            await supabaseAdmin.from('devices').update({
+              network_type: 'ONLINE',
+            }).eq('id', activeDevice.id);
+          } catch (_) {}
+        }
+      }
       offlineStatusTracker.set(merchant.id, { isOffline: false, alertSent: false });
       results.push({ merchant: merchant.name, action: 'RECOVERY_NOTICE_SENT' });
     }

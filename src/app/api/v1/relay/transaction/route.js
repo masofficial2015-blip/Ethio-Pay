@@ -219,9 +219,7 @@ export async function POST(request) {
       transaction_time: transaction_time || new Date().toISOString(),
     };
 
-    const telegramResult = await broadcastToCashiers(cashierChatIds, txData, merchantId);
-
-    // 8. Persist Transaction in Database
+    // 7. Persist Transaction in Database FIRST to acquire atomic deduplication lock
     let transactionId = crypto.randomUUID();
 
     if (isSupabaseConfigured()) {
@@ -240,19 +238,21 @@ export async function POST(request) {
           receiver_account: txData.receiver_account,
           transaction_time: txData.transaction_time,
           status: 'PROCESSED',
-          telegram_delivered_at: telegramResult.deliveredCount > 0 ? new Date().toISOString() : null,
-          telegram_error: telegramResult.errors.length > 0 ? telegramResult.errors.join('; ') : null,
+          telegram_delivered_at: null,
+          telegram_error: null,
         })
         .select('id')
         .single();
 
       if (insertError) {
         if (insertError.code === '23505') {
+          // Unique constraint violation: duplicate received concurrently!
+          // Suppress Telegram alert and return duplicate=true
           return Response.json({
             success: true,
             duplicate: true,
             method: parsingMethod,
-            message: 'Concurrent duplicate detected and suppressed.',
+            message: 'Concurrent duplicate detected and suppressed. No duplicate Telegram alert sent.',
           });
         }
         return Response.json({ error: 'DatabaseError', message: insertError.message }, { status: 500 });
@@ -265,9 +265,28 @@ export async function POST(request) {
         merchant_id: merchantId,
         device_id: device.id,
         ...txData,
-        telegram_delivered: telegramResult.deliveredCount > 0,
+        telegram_delivered: false,
         created_at: new Date().toISOString(),
       });
+    }
+
+    // 8. Now that database lock is acquired uniquely, dispatch Telegram Alert to Cashier Group
+    const telegramResult = await broadcastToCashiers(cashierChatIds, txData, merchantId);
+
+    // Update telegram delivery status on the persisted record
+    if (isSupabaseConfigured()) {
+      await supabaseAdmin
+        .from('transactions')
+        .update({
+          telegram_delivered_at: telegramResult.deliveredCount > 0 ? new Date().toISOString() : null,
+          telegram_error: telegramResult.errors.length > 0 ? telegramResult.errors.join('; ') : null,
+        })
+        .eq('id', transactionId);
+    } else {
+      const tx = mockState.transactions.find((t) => t.id === transactionId);
+      if (tx) {
+        tx.telegram_delivered = telegramResult.deliveredCount > 0;
+      }
     }
 
     return Response.json({
