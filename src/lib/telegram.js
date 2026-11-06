@@ -35,25 +35,23 @@ export function formatCashierAlert(transaction) {
       ? escapeHtml(transaction.payer_account_or_phone)
       : 'Customer';
 
-  const timeStr = transaction.transaction_time
-    ? new Date(transaction.transaction_time).toLocaleTimeString('en-US', {
-      timeZone: 'Africa/Addis_Ababa',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    })
-    : new Date().toLocaleTimeString('en-US', {
-      timeZone: 'Africa/Addis_Ababa',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
+  let txDate = transaction.transaction_time ? new Date(transaction.transaction_time) : new Date();
+  if (isNaN(txDate.getTime())) {
+    txDate = new Date();
+  } else if (txDate.getTime() - Date.now() > 10 * 60 * 1000) {
+    // Client sent local time with pseudo-UTC 'Z' literal (e.g. 3 hours ahead). Shift back to true UTC.
+    txDate = new Date(txDate.getTime() - 3 * 3600 * 1000);
+  }
 
-  const dateStr = transaction.transaction_time
-    ? new Date(transaction.transaction_time).toLocaleDateString('en-CA', { timeZone: 'Africa/Addis_Ababa' })
-    : new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Addis_Ababa' });
+  const timeStr = txDate.toLocaleTimeString('en-US', {
+    timeZone: 'Africa/Addis_Ababa',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+
+  const dateStr = txDate.toLocaleDateString('en-CA', { timeZone: 'Africa/Addis_Ababa' });
 
   return `🔔 <b>PAYMENT RECEIVED</b>
 ━━━━━━━━━━━━━━━━━━━━━

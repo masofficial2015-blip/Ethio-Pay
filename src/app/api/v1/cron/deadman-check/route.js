@@ -138,10 +138,15 @@ export async function checkDeadManSwitches() {
 
 export async function GET(request) {
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  const authHeader = request.headers.get('authorization');
+
+  // Enforce mandatory fail-closed authentication in production
+  if (process.env.NODE_ENV === 'production' || cronSecret) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return Response.json(
+        { error: 'Unauthorized', message: 'Valid CRON_SECRET bearer token is required' },
+        { status: 401 }
+      );
     }
   }
 

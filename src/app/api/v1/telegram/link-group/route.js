@@ -63,12 +63,20 @@ export async function POST(request) {
       return Response.json({ error: 'LinkError', message: linkResult.error }, { status: 500 });
     }
 
+    const linkedTimeStr = new Date().toLocaleTimeString('en-US', {
+      timeZone: 'Africa/Addis_Ababa',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+
     // Send confirmation message to group
     const confirmationText = `✅ <b>Telegram Cashier Group Successfully Linked!</b>
 ━━━━━━━━━━━━━━━━━━━━━
 🏢 <b>Pharmacy:</b> ${merchant.name}
 🔢 <b>Chat ID:</b> <code>${targetChatId}</code>
-🕒 <b>Linked At:</b> ${new Date().toLocaleTimeString()}
+🕒 <b>Linked At:</b> ${linkedTimeStr}
 ━━━━━━━━━━━━━━━━━━━━━
 <i>Eligible payment alerts from the owner's phone will now arrive here automatically.</i>`;
 
