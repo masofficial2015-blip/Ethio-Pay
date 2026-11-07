@@ -1,5 +1,6 @@
 import { authenticateDevice, hashDeviceToken, mockState } from '@/lib/auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { sendTelegramMessage } from '@/lib/telegram';
 
 export async function POST(request) {
   try {
@@ -28,10 +29,44 @@ export async function POST(request) {
     const tokenHash = hashDeviceToken(rawToken);
     const now = new Date().toISOString();
 
+    // Check if the device was previously marked offline to cashiers
+    const wasOfflineAlerted =
+      device.is_offline_alert_sent === true ||
+      device.network_type === 'OFFLINE_ALERTED';
+
+    if (wasOfflineAlerted) {
+      try {
+        let chatId = null;
+        if (isSupabaseConfigured()) {
+          const { data: cashier } = await supabaseAdmin
+            .from('cashiers')
+            .select('telegram_chat_id, is_active')
+            .eq('merchant_id', merchant.id)
+            .eq('is_active', true)
+            .maybeSingle();
+          chatId = cashier?.telegram_chat_id;
+        } else {
+          const mockCashier = Array.from(mockState.cashiers.values()).find(
+            c => c.merchant_id === merchant.id && c.is_active
+          );
+          chatId = mockCashier?.telegram_chat_id;
+        }
+
+        if (chatId) {
+          const recoveryMsg =
+            `🟢 <b> NOTICE: SERVICE RESTORED</b>\n\n` +
+            `owner's Device is back online and actively forwarding alerts here.`;
+          await sendTelegramMessage(chatId, recoveryMsg, merchant.id);
+        }
+      } catch (tgErr) {
+        console.error('Failed to send Telegram recovery notice:', tgErr);
+      }
+    }
+
     const healthUpdate = {
       battery_level: typeof battery_level === 'number' ? battery_level : device.battery_level,
       is_battery_charging: typeof is_battery_charging === 'boolean' ? is_battery_charging : device.is_battery_charging,
-      network_type: network_type || device.network_type,
+      network_type: network_type || (device.network_type === 'OFFLINE_ALERTED' ? 'ONLINE' : device.network_type),
       is_foreground_service_running:
         typeof is_foreground_service_running === 'boolean'
           ? is_foreground_service_running

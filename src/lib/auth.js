@@ -117,6 +117,7 @@ export async function authenticateDevice(rawToken) {
           has_sms_permission,
           has_notification_permission,
           is_battery_optimization_ignored,
+          is_offline_alert_sent,
           last_heartbeat_at,
           merchants (
             id,
